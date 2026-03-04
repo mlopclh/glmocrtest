@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -12,6 +11,7 @@ from rich.panel import Panel
 
 from glm_ocr.client import GLMOCRClient
 from glm_ocr.models import OCRRequest, OutputFormat
+from glm_ocr.ollama_client import OllamaGLMOCRClient
 
 app = typer.Typer(
     name="glm-ocr",
@@ -32,14 +32,22 @@ def run(
         Optional[str],
         typer.Option("--url", "-u", help="URL of a remote image."),
     ] = None,
+    ollama: Annotated[
+        bool,
+        typer.Option("--ollama", help="Use local Ollama backend instead of ZhipuAI cloud."),
+    ] = False,
+    ollama_host: Annotated[
+        str,
+        typer.Option("--ollama-host", help="Ollama server base URL."),
+    ] = "http://localhost:11434",
     api_key: Annotated[
         Optional[str],
-        typer.Option("--api-key", envvar="ZHIPUAI_API_KEY", help="ZhipuAI API key."),
+        typer.Option("--api-key", envvar="ZHIPUAI_API_KEY", help="ZhipuAI API key (cloud only)."),
     ] = None,
     model: Annotated[
-        str,
-        typer.Option("--model", "-m", help="GLM model to use."),
-    ] = "glm-4v-plus",
+        Optional[str],
+        typer.Option("--model", "-m", help="Model name (cloud: glm-4v-plus, ollama: glm-ocr:latest)."),
+    ] = None,
     language: Annotated[
         Optional[str],
         typer.Option("--language", "-l", help="Language hint (BCP-47 code)."),
@@ -66,7 +74,14 @@ def run(
     )
 
     try:
-        client = GLMOCRClient(api_key=api_key, model=model)
+        if ollama:
+            effective_model = model or "glm-ocr:latest"
+            client: GLMOCRClient | OllamaGLMOCRClient = OllamaGLMOCRClient(
+                model=effective_model, base_url=ollama_host
+            )
+        else:
+            effective_model = model or "glm-4v-plus"
+            client = GLMOCRClient(api_key=api_key, model=effective_model)
         result = client.ocr(request)
     except Exception as exc:  # noqa: BLE001
         err_console.print(f"OCR failed: {exc}")
